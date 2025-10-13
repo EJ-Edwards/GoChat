@@ -8,7 +8,7 @@ import (
 
 func main() {
 
-	var addr = flag.String("addr", ":8080", "http service address")
+	var addr = flag.String("addr", ":5500", "http service address")
 	flag.Parse()
 	// WebSocket endpoint will be handled by a small wrapper that picks the room based on ?pin=
 	http.HandleFunc("/room", func(w http.ResponseWriter, req *http.Request) {
