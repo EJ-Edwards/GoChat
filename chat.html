@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="style.css"/>
+  <script defer src="script.js"></script>
+</head>
+
+<body>
+  <div id="chatbox-container">
+    <h1 id="title">Go Chat Room</h1>
+    <div id="all-messages">
+    </div>
+
+    <div id="typing-container">
+      <form>
+        <div class="input-container">
+          <label>Username:</label>
+          <input type="text" id="username" />
+        </div>
+        <div class="input-container">
+          <label>Message:</label>
+          <input type="text" id="message" />
+        </div>
+         <div class="input-container">
+        <label>Email:</label>
+        <input type="text" id="email" />
+      </div>
+      </form>
+      <button id="send-btn">Send</button>
+      
+      <div class="input-container">
+        <label>Profile Picture URL:</label>
+        <input type="text" id="profile-pic" />
+      </div>
+      
+      <div id="typing-indicator" style="display: none;">User is typing...</div>
+    </div>
+  </div>
+</body>
+
+</html>
