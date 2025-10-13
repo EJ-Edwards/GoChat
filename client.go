@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -24,6 +25,7 @@ func (c *client) read() {
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
+			log.Println("read error:", err)
 			return
 		}
 		if c.room != nil {
@@ -33,16 +35,11 @@ func (c *client) read() {
 }
 
 func (c *client) write() {
-
-	defer func() {
-		if c.room != nil {
-			c.leftOnce.Do(func() { c.room.leave <- c })
-		}
-		c.conn.Close()
-	}()
+	defer c.conn.Close()
 
 	for msg := range c.send {
 		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Println("write error:", err)
 			return
 		}
 	}
