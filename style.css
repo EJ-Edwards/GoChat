@@ -63,11 +63,11 @@ h2 {
 
 #chatbox-container {
  
-  width: 75vw;
-  height: 75vh;
+  width: 65vw;
+  height: 65vh;
   background-color: var(--secondary);
 
-  margin: 0 auto;
+  margin: 100px;
   padding: 1%;
   border-radius: 10px;
 
@@ -192,4 +192,30 @@ form label {
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     margin: 16px 0;
+}
+
+
+#go-chat {
+  background-color: var(--accent);
+  border: none;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+#go-chat:hover {
+  background-color: darken(var(--accent), 10%);
+}
+
+#title2 {
+  text-align: center;
+  font-size: 2em;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background-color: var(--secondary);
+  color: white;
+  padding: 16px 24px;
+  margin-bottom: 16px;
+  border-radius: 10px;
 }
