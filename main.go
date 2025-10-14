@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -12,6 +13,8 @@ import (
 const (
 	socketBufferSize  = 1024
 	messageBufferSize = 256
+	pingInterval      = 30 * time.Second
+	pongWait          = 60 * time.Second
 )
 
 // --- Client ---
@@ -22,13 +25,22 @@ type client struct {
 }
 
 func (c *client) read() {
+	// Set initial read deadline and pong handler
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	defer func() {
 		c.room.leave <- c
 		c.conn.Close()
 	}()
+
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
+			log.Println("read error:", err)
 			break
 		}
 		c.room.forward <- msg
@@ -36,10 +48,27 @@ func (c *client) read() {
 }
 
 func (c *client) write() {
-	defer c.conn.Close()
-	for msg := range c.send {
-		if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-			break
+	ticker := time.NewTicker(pingInterval)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+
+	for {
+		select {
+		case msg, ok := <-c.send:
+			if !ok {
+				return
+			}
+			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				log.Println("write error:", err)
+				return
+			}
+		case <-ticker.C:
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Println("ping error:", err)
+				return
+			}
 		}
 	}
 }
@@ -104,7 +133,11 @@ func (r *room) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		log.Println("Upgrade error:", err)
 		return
 	}
-	c := &client{conn: socket, send: make(chan []byte, messageBufferSize), room: r}
+	c := &client{
+		conn: socket,
+		send: make(chan []byte, messageBufferSize),
+		room: r,
+	}
 	r.join <- c
 	go c.write()
 	go c.read()
@@ -170,7 +203,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "5500" // local dev default
+		port = "5500"
 	}
 	log.Println("Listening on :" + port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
