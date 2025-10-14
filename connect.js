@@ -1,3 +1,4 @@
+// connect.js
 document.addEventListener('DOMContentLoaded', () => {
   const usernameInput = document.getElementById('username');
   const messageInput = document.getElementById('message');
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let ws = null;
   let currentPin = null;
 
+  // Append messages to chat window
   function append(text, type = 'normal') {
     const d = document.createElement('div');
     d.textContent = text;
@@ -33,39 +35,52 @@ document.addEventListener('DOMContentLoaded', () => {
     messages.scrollTop = messages.scrollHeight;
   }
 
+  // Decide WebSocket base URL (local vs Render)
+  function getWsBaseUrl() {
+    if (window.location.hostname.includes('localhost')) {
+      return 'ws://localhost:5500';
+    }
+    // Replace with your Render app name
+    return 'wss://your-app-name.onrender.com';
+  }
+
+  // Connect to a room by PIN
   function connectToPin(pin) {
     if (!pin) return;
 
-    if (ws) ws.close(); // close old connection
+    if (ws) ws.close();
     currentPin = pin;
 
-    ws = new WebSocket('ws://localhost:5500/room?pin=' + encodeURIComponent(pin));
+    const url = getWsBaseUrl() + '/room?pin=' + encodeURIComponent(pin);
+    ws = new WebSocket(url);
 
     ws.addEventListener('open', () => append('Connected to room ' + pin, 'system'));
-
     ws.addEventListener('message', (ev) => append(ev.data));
-
     ws.addEventListener('close', () => {
       append('Disconnected from room ' + pin, 'system');
-      // optional: auto-reconnect after 2 seconds
+      // optional auto-reconnect
       setTimeout(() => {
         append('Reconnecting...', 'system');
         connectToPin(pin);
       }, 2000);
     });
-
     ws.addEventListener('error', (err) => {
       console.error(err);
       append('WebSocket error', 'system');
     });
   }
 
+  // Join existing room
   joinBtn.addEventListener('click', () => {
     const p = pinInput.value.trim();
-    if (!p) { append('Enter a PIN to join', 'system'); return; }
+    if (!p) {
+      append('Enter a PIN to join', 'system');
+      return;
+    }
     connectToPin(p);
   });
 
+  // Create new room
   createBtn.addEventListener('click', () => {
     const p = Math.floor(1000 + Math.random() * 9000).toString();
     pinInput.value = p;
@@ -73,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
     connectToPin(p);
   });
 
+  // Send message
   sendBtn.addEventListener('click', () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       append('Not connected to a room', 'system');
@@ -87,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     messageInput.value = '';
   });
 
-  // Optional: send message on Enter key
+  // Send on Enter key
   messageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendBtn.click();
   });
