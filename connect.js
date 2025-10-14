@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Decide WebSocket base URL (local vs Render)
   function getWsBaseUrl() {
     if (window.location.hostname.includes('localhost')) {
-      return 'ws://localhost:5500';
+      return 'ws://localhost:8080';
     }
     return 'wss://gochat-tz6u.onrender.com';
   }
