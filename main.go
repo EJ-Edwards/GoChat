@@ -70,11 +70,12 @@ func (r *room) run() {
 		select {
 		case c := <-r.join:
 			r.clients[c] = true
+			log.Println("Client joined room", r.pin)
 		case c := <-r.leave:
 			if _, ok := r.clients[c]; ok {
 				delete(r.clients, c)
 				close(c.send)
-				// cleanup if empty
+				log.Println("Client left room", r.pin)
 				if len(r.clients) == 0 {
 					manager.deleteRoom(r.pin)
 					return
@@ -169,7 +170,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3000"
+		port = "5500" // local dev default
 	}
 	log.Println("Listening on :" + port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
