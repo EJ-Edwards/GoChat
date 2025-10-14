@@ -40,10 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.location.hostname.includes('localhost')) {
       return 'ws://localhost:5500';
     }
-    // Replace with your Render app name
-    return 'wss://your-app-name.onrender.com';
+    return 'wss://gochat-tz6u.onrender.com';
   }
-
   // Connect to a room by PIN
   function connectToPin(pin) {
     if (!pin) return;
