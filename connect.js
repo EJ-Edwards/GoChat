@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ws) ws.close();
     currentPin = pin;
 
-    const url = getWsBaseUrl() + '/room?pin=' + encodeURIComponent(pin);
+    const url = getWsBaseUrl() + '/ws?pin=' + encodeURIComponent(pin);
     ws = new WebSocket(url);
 
     ws.addEventListener('open', () => append('Connected to room ' + pin, 'system'));
