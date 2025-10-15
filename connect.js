@@ -6,13 +6,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const messages = document.getElementById('all-messages');
   const title = document.getElementById('title2');
 
-  // --- Safety check: ensure elements exist ---
   if (!usernameInput || !messageInput || !sendBtn || !messages) {
     console.error("❌ Chat elements missing — check your HTML IDs!");
     return;
   }
 
-  // --- Create PIN controls if missing ---
+  // Prevent form submit reloads
+  const form = document.querySelector('#typing-container form');
+  if (form) form.addEventListener('submit', e => e.preventDefault());
+
+  // Inject PIN controls if missing
   let pinControls = document.getElementById('pin-controls');
   if (!pinControls) {
     pinControls = document.createElement('div');
@@ -34,10 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let ws = null;
   let currentPin = null;
   let reconnectTimeout = null;
+  let heartbeatInterval = null;
   let retryCount = 0;
   const maxRetries = 5;
 
-  // --- Helper: Append message to chat ---
+  // Append message helpers
   function append(text, type = 'normal') {
     const div = document.createElement('div');
     div.className = type === 'system' ? 'system-msg' : 'user-msg';
@@ -46,33 +50,55 @@ document.addEventListener('DOMContentLoaded', () => {
     messages.scrollTop = messages.scrollHeight;
   }
 
-  // --- Helper: Get WebSocket base URL ---
-  function getWsBaseUrl() {
-    if (window.location.hostname.includes('localhost')) {
-      return 'ws://localhost:8080';
-    }
-    // For Render or any HTTPS host → use wss
-    return 'wss://gochat-tz6u.onrender.com';
+  // Prefer building URL from current origin to avoid cross-origin surprises
+  function getWsUrl(pin) {
+    const isLocal = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
+    const scheme = isLocal ? 'ws' : 'wss';
+    const host = window.location.host || 'gochat-tz6u.onrender.com';
+    // If you serve frontend from the same host, use relative path — fewer origin issues:
+    // return `${scheme}://${host}/ws?pin=${encodeURIComponent(pin)}`;
+    // Or hardcode Render host if needed:
+    return isLocal
+      ? `ws://localhost:8080/ws?pin=${encodeURIComponent(pin)}`
+      : `wss://gochat-tz6u.onrender.com/ws?pin=${encodeURIComponent(pin)}`;
   }
 
-  // --- Connect to a chat room (by PIN) ---
+  function clearTimers() {
+    if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+  }
+
+  function startHeartbeat() {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+      }
+    }, 30000); // 30s heartbeat from client keeps proxies happy
+  }
+
+  // Graceful close
+  function closeSocket() {
+    if (ws) {
+      try { ws.close(1000, 'client navigating away'); } catch (_) {}
+      ws = null;
+    }
+    clearTimers();
+  }
+
+  // Connect to a chat room by PIN
   function connectToPin(pin) {
     if (!pin) return;
 
-    // If already connected to same room, skip
     if (ws && ws.readyState === WebSocket.OPEN && currentPin === pin) {
       append(`Already connected to room ${pin}`, 'system');
       return;
     }
 
-    // Close existing socket before reconnecting
-    if (ws) {
-      try { ws.close(); } catch (e) {}
-    }
-    if (reconnectTimeout) clearTimeout(reconnectTimeout);
-
+    closeSocket();
     currentPin = pin;
-    const url = `${getWsBaseUrl()}/ws?pin=${encodeURIComponent(pin)}`;
+
+    const url = getWsUrl(pin);
     console.log(`🌐 Connecting to: ${url}`);
     ws = new WebSocket(url);
 
@@ -80,20 +106,44 @@ document.addEventListener('DOMContentLoaded', () => {
       retryCount = 0;
       append(`✅ Connected to room ${pin}`, 'system');
       if (title) title.textContent = `Room ${pin}`;
-      console.log("Connected successfully!");
+      startHeartbeat();
     });
 
-    ws.addEventListener('message', (ev) => append(ev.data));
+    ws.addEventListener('message', (ev) => {
+      // Try to parse JSON; fallback to raw text
+      try {
+        const data = JSON.parse(ev.data);
+        switch (data.type) {
+          case 'pong':
+            // Ignore heartbeat acks
+            return;
+          case 'system':
+            append(data.msg || ev.data, 'system');
+            return;
+          case 'chat':
+            append(`${data.user || 'anon'}: ${data.msg ?? ''}`);
+            return;
+          default:
+            append(ev.data);
+        }
+      } catch {
+        append(ev.data);
+      }
+    });
 
     ws.addEventListener('close', (e) => {
-      append(`⚠️ Disconnected from room ${pin}`, 'system');
+      clearInterval(heartbeatInterval);
+      append(`⚠️ Disconnected from room ${pin} (code ${e.code})`, 'system');
       console.log(`WebSocket closed: code=${e.code}, reason=${e.reason}`);
       ws = null;
-      if (retryCount < maxRetries) {
+
+      // Reconnect on abnormal closure
+      if (retryCount < maxRetries && e.code !== 1000) {
         retryCount++;
+        const backoffMs = Math.min(3000 * retryCount, 15000);
         append(`Reconnecting... (attempt ${retryCount}/${maxRetries})`, 'system');
-        reconnectTimeout = setTimeout(() => connectToPin(pin), 3000);
-      } else {
+        reconnectTimeout = setTimeout(() => connectToPin(pin), backoffMs);
+      } else if (retryCount >= maxRetries) {
         append('❌ Max reconnection attempts reached.', 'system');
       }
     });
@@ -104,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- Button Events ---
+  // Button Events
   joinBtn.addEventListener('click', () => {
     const pin = pinInput.value.trim();
     if (!pin) {
@@ -130,11 +180,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const user = usernameInput.value.trim() || 'anon';
     const msg = messageInput.value.trim();
     if (!msg) return;
-    ws.send(`${user}: ${msg}`);
+
+    // Send structured JSON for future extensibility
+    ws.send(JSON.stringify({ type: 'chat', user, msg }));
     messageInput.value = '';
   });
 
   messageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendBtn.click();
   });
+
+  // Clean up if the page unloads
+  window.addEventListener('beforeunload', closeSocket);
 });

@@ -12,30 +12,35 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// --- Tunables (aligned with Gorilla best practices) ---
+const (
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = 54 * time.Second // < pongWait
+	maxMessageSize = 1024 * 8         // Allow some buffer for JSON
+)
+
 // --- WebSocket upgrader ---
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+	ReadBufferSize:    1024,
+	WriteBufferSize:   1024,
+	EnableCompression: true,
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		log.Printf("Incoming WebSocket from Origin: %s", origin)
 
-		// Always allow if Origin is empty (e.g., same-origin or curl)
 		if origin == "" {
+			// Same-origin or tools; allow
 			return true
 		}
-
 		// Local dev
 		if strings.Contains(origin, "localhost") || strings.Contains(origin, "127.0.0.1") {
 			return true
 		}
-
-		// Render deployment — allow your deployed domain
-		if strings.Contains(origin, "https://gochat-tz6u.onrender.com") {
+		// Render deployment — allow either http or https schemes
+		if strings.Contains(origin, "gochat-tz6u.onrender.com") {
 			return true
 		}
-
-		// Otherwise, reject
 		return false
 	},
 }
@@ -73,6 +78,8 @@ func (h *Hub) run(ctx context.Context) {
 			return
 		case client := <-h.register:
 			h.clients[client] = true
+			// Optional: system join message
+			client.send <- []byte(`{"type":"system","msg":"👋 Welcome to room ` + h.pin + `"}`)
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
@@ -155,44 +162,65 @@ func (c *Client) readPump() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
-	c.conn.SetReadLimit(512)
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+	c.conn.SetReadLimit(maxMessageSize)
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("readPump unexpected close: %v", err)
+			}
 			break
 		}
+
+		// Handle client heartbeat (JSON ping)
+		trim := strings.TrimSpace(string(message))
+		if strings.Contains(trim, `"type":"ping"`) {
+			// Echo a pong so the client can ignore heartbeats in the UI
+			c.send <- []byte(`{"type":"pong","ts":` + time.Now().Format(`"2006-01-02T15:04:05Z07:00"`) + `}`)
+			continue
+		}
+
+		// Broadcast all other messages
 		c.hub.broadcast <- message
 	}
 }
 
 func (c *Client) writePump() {
-	ticker := time.NewTicker(54 * time.Second)
+	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()
 	}()
+
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				// Hub closed channel: tell client
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
-			w.Write(message)
-			w.Close()
+			if _, err := w.Write(message); err != nil {
+				_ = w.Close()
+				return
+			}
+			_ = w.Close()
+
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			// Server heartbeat (control frame)
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -211,10 +239,10 @@ func main() {
 	manager := newHubManager()
 	mux := http.NewServeMux()
 
-	// Serve static assets (CSS, JS, etc.)
+	// Serve static assets
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
-	// Serve chat.html at root "/"
+	// Root serves chat.html
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./static/chat.html")
 	})
@@ -224,10 +252,10 @@ func main() {
 		serveWs(manager, w, r)
 	})
 
-	// Health check (for Render)
+	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	server := &http.Server{
