@@ -20,7 +20,7 @@ var upgrader = websocket.Upgrader{
 		origin := r.Header.Get("Origin")
 		log.Printf("Incoming WebSocket from Origin: %s", origin)
 
-		// Always allow if Origin is empty (e.g. curl or same-origin)
+		// Always allow if Origin is empty (e.g., same-origin or curl)
 		if origin == "" {
 			return true
 		}
@@ -30,7 +30,7 @@ var upgrader = websocket.Upgrader{
 			return true
 		}
 
-		// Render deployment — allow any *.onrender.com domain
+		// Render deployment — allow your deployed domain
 		if strings.Contains(origin, "https://gochat-tz6u.onrender.com") {
 			return true
 		}
@@ -211,10 +211,20 @@ func main() {
 	manager := newHubManager()
 	mux := http.NewServeMux()
 
-	mux.Handle("/", http.FileServer(http.Dir("./static")))
+	// Serve static assets (CSS, JS, etc.)
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+
+	// Serve chat.html at root "/"
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./static/chat.html")
+	})
+
+	// WebSocket endpoint
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(manager, w, r)
 	})
+
+	// Health check (for Render)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
