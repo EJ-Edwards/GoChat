@@ -20,38 +20,33 @@ const (
 	maxMessageSize = 1024 * 8
 )
 
-// Check if the request Origin matches the request Host (same-site), or local dev.
+// --- Origin check ---
 func allowOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// Same-origin navigations or tools (e.g., curl)
-		return true
+		return true // same-origin or CLI
 	}
 
-	// Parse Origin
 	u, err := url.Parse(origin)
 	if err != nil {
 		return false
 	}
 
-	originHost := u.Host // includes host:port if present
-	reqHost := r.Host    // includes host:port
+	originHost := u.Host
+	reqHost := r.Host
 
-	// Allow local dev
 	if strings.Contains(originHost, "localhost") || strings.Contains(originHost, "127.0.0.1") {
 		return true
 	}
 
-	// Allow same-site (exact host:port match)
 	if strings.EqualFold(originHost, reqHost) {
 		return true
 	}
 
-	// Optional: allow specific production domain family
-	// e.g., allow any subdomain of onrender.com if you need:
-	// if strings.HasSuffix(originHost, ".onrender.com") || originHost == "onrender.com" {
-	//     return true
-	// }
+	// Allow Render subdomains if needed
+	if strings.HasSuffix(originHost, ".onrender.com") || originHost == "onrender.com" {
+		return true
+	}
 
 	return false
 }
@@ -157,7 +152,7 @@ func serveWs(manager *HubManager, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("New connection for room PIN: %s", pin)
+	log.Printf("New WebSocket connection for room PIN: %s", pin)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -249,16 +244,25 @@ func main() {
 	manager := newHubManager()
 	mux := http.NewServeMux()
 
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	// --- Serve static files ---
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
+	// --- Serve root & fallback routes ---
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./static/chat.html")
+		path := "static" + r.URL.Path
+		if _, err := os.Stat(path); os.IsNotExist(err) || strings.HasSuffix(r.URL.Path, "/") {
+			http.ServeFile(w, r, "static/index.html")
+			return
+		}
+		http.ServeFile(w, r, path)
 	})
 
+	// --- WebSocket route ---
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(manager, w, r)
 	})
 
+	// --- Health check ---
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -272,6 +276,6 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("Server running on %s", addr)
+	log.Printf("✅ Server running on %s", addr)
 	log.Fatal(server.ListenAndServe())
 }
