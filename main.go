@@ -1,3 +1,4 @@
+// File: main.go
 package main
 
 import (
@@ -5,39 +6,50 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-// --- WebSocket upgrader ---
+// WebSocket upgrader with Render-friendly origin handling
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// Allow from your Render domain and local dev
 		origin := r.Header.Get("Origin")
-		return origin == "https://gochat-tz6u.onrender.com" || origin == "http://localhost:8080"
+		// Allow empty origin (e.g., non-browser or same-origin), local dev, and Render subdomains
+		if origin == "" {
+			return true
+		}
+		if origin == "http://localhost:8080" || origin == "http://127.0.0.1:8080" {
+			return true
+		}
+		// allow any https://*.onrender.com
+		if strings.HasPrefix(origin, "https://") && strings.Contains(origin, ".onrender.com") {
+			return true
+		}
+		// adjust as needed for custom domains
+		return false
 	},
 }
 
-// --- Client struct ---
+// Client represents a single websocket connection
 type Client struct {
 	conn *websocket.Conn
 	send chan []byte
 	hub  *Hub
 }
 
-// --- Hub for each PIN ---
-// --- Hub for each PIN ---
+// Hub holds clients for a single PIN.
+// Note: no mutex here because hub.run serializes access to `clients`.
 type Hub struct {
 	clients    map[*Client]bool
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
 	pin        string
-	mu         sync.Mutex
 }
 
 func newHub(pin string) *Hub {
@@ -50,6 +62,8 @@ func newHub(pin string) *Hub {
 	}
 }
 
+// run processes register/unregister/broadcast messages.
+// When no clients remain and unregister path closes last client, run returns to allow cleanup.
 func (h *Hub) run(ctx context.Context) {
 	for {
 		select {
@@ -61,12 +75,17 @@ func (h *Hub) run(ctx context.Context) {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
+				// if no clients remain, exit so manager can clean up this hub
+				if len(h.clients) == 0 {
+					return
+				}
 			}
 		case message := <-h.broadcast:
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
+					// slow client — drop it
 					close(client.send)
 					delete(h.clients, client)
 				}
@@ -75,33 +94,41 @@ func (h *Hub) run(ctx context.Context) {
 	}
 }
 
-// --- Hub Manager ---
+// HubManager manages hubs per-PIN. It protects the hubs map with a mutex.
 type HubManager struct {
 	hubs map[string]*Hub
 	mu   sync.Mutex
 }
 
 func newHubManager() *HubManager {
-	return &HubManager{hubs: make(map[string]*Hub)}
+	return &HubManager{
+		hubs: make(map[string]*Hub),
+	}
 }
 
+// getHub returns the hub for a pin, creating it if needed.
+// It starts hub.run in a goroutine and ensures the hub is removed from the map when run returns.
 func (m *HubManager) getHub(pin string) *Hub {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	hub, exists := m.hubs[pin]
 	if !exists {
 		hub = newHub(pin)
 		m.hubs[pin] = hub
+		// start hub.run and cleanup when it returns
 		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			hub.run(ctx)
+		go func(p string, h *Hub) {
+			h.run(ctx)
+			m.mu.Lock()
+			delete(m.hubs, p)
+			m.mu.Unlock()
 			cancel()
-		}()
+		}(pin, hub)
 	}
+	m.mu.Unlock()
 	return hub
 }
 
-// --- WebSocket handler ---
+// serveWs upgrades HTTP -> WebSocket and registers client with the hub.
 func serveWs(manager *HubManager, w http.ResponseWriter, r *http.Request) {
 	pin := r.URL.Query().Get("pin")
 	if pin == "" {
@@ -125,6 +152,7 @@ func serveWs(manager *HubManager, w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) readPump() {
 	defer func() {
+		// unregister client and close connection
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
@@ -137,8 +165,10 @@ func (c *Client) readPump() {
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
+			// read error or client closed; defer handles unregister
 			break
 		}
+		// broadcast to the hub
 		c.hub.broadcast <- message
 	}
 }
@@ -154,14 +184,15 @@ func (c *Client) writePump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				// hub closed the channel
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
-			w.Write(message)
+			_, _ = w.Write(message)
 			if err := w.Close(); err != nil {
 				return
 			}
@@ -174,9 +205,8 @@ func (c *Client) writePump() {
 	}
 }
 
-// --- Main function ---
 func main() {
-	// Render-compatible port handling
+	// Render sets PORT; default to 8080 locally
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -186,18 +216,18 @@ func main() {
 	manager := newHubManager()
 	mux := http.NewServeMux()
 
-	// Serve frontend from ./static
+	// serve static files from ./static
 	mux.Handle("/", http.FileServer(http.Dir("./static")))
 
-	// WebSocket endpoint
+	// websocket endpoint
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(manager, w, r)
 	})
 
-	// Health check for Render
+	// health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	server := &http.Server{
