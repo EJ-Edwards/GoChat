@@ -4,8 +4,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const messageInput = document.getElementById('message');
   const sendBtn = document.getElementById('send-btn');
   const messages = document.getElementById('all-messages');
+  const title = document.getElementById('title2');
 
-  // create PIN controls if missing
+  // --- Safety check: ensure elements exist ---
+  if (!usernameInput || !messageInput || !sendBtn || !messages) {
+    console.error("❌ Chat elements missing — check your HTML IDs!");
+    return;
+  }
+
+  // --- Create PIN controls if missing ---
   let pinControls = document.getElementById('pin-controls');
   if (!pinControls) {
     pinControls = document.createElement('div');
@@ -17,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <button id="create-pin">Create</button>
     `;
     const container = document.querySelector('#chatbox-container');
-    // insert before messages
     container.insertBefore(pinControls, messages);
   }
 
@@ -28,82 +34,97 @@ document.addEventListener('DOMContentLoaded', () => {
   let ws = null;
   let currentPin = null;
   let reconnectTimeout = null;
+  let retryCount = 0;
+  const maxRetries = 5;
 
+  // --- Helper: Append message to chat ---
   function append(text, type = 'normal') {
     const div = document.createElement('div');
+    div.className = type === 'system' ? 'system-msg' : 'user-msg';
     div.textContent = text;
-    if (type === 'system') div.style.fontStyle = 'italic';
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
   }
 
-  // base URL uses current host so it works on Render and local
+  // --- Helper: Get WebSocket base URL ---
   function getWsBaseUrl() {
     if (window.location.hostname.includes('localhost')) {
       return 'ws://localhost:8080';
     }
-    // use same host and scheme (wss when https)
-    const scheme = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    return scheme + window.location.host;
+    // For Render or any HTTPS host → use wss
+    return 'wss://gochat-tz6u.onrender.com';
   }
 
+  // --- Connect to a chat room (by PIN) ---
   function connectToPin(pin) {
     if (!pin) return;
 
-    // if already connected to same pin, skip
+    // If already connected to same room, skip
     if (ws && ws.readyState === WebSocket.OPEN && currentPin === pin) {
       append(`Already connected to room ${pin}`, 'system');
       return;
     }
 
-    // close previous socket if exists
+    // Close existing socket before reconnecting
     if (ws) {
-      try { ws.close(); } catch (e) { /* ignore */ }
+      try { ws.close(); } catch (e) {}
     }
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
 
     currentPin = pin;
-    const url = getWsBaseUrl() + '/ws?pin=' + encodeURIComponent(pin);
+    const url = `${getWsBaseUrl()}/ws?pin=${encodeURIComponent(pin)}`;
+    console.log(`🌐 Connecting to: ${url}`);
     ws = new WebSocket(url);
 
-    ws.addEventListener('open', () => append(`Connected to room ${pin}`, 'system'));
+    ws.addEventListener('open', () => {
+      retryCount = 0;
+      append(`✅ Connected to room ${pin}`, 'system');
+      if (title) title.textContent = `Room ${pin}`;
+      console.log("Connected successfully!");
+    });
+
     ws.addEventListener('message', (ev) => append(ev.data));
-    ws.addEventListener('close', () => {
-      append(`Disconnected from room ${pin}`, 'system');
+
+    ws.addEventListener('close', (e) => {
+      append(`⚠️ Disconnected from room ${pin}`, 'system');
+      console.log(`WebSocket closed: code=${e.code}, reason=${e.reason}`);
       ws = null;
-      // auto-reconnect only if still on same pin
-      if (currentPin === pin) {
-        reconnectTimeout = setTimeout(() => {
-          append('Reconnecting...', 'system');
-          connectToPin(pin);
-        }, 3000);
+      if (retryCount < maxRetries) {
+        retryCount++;
+        append(`Reconnecting... (attempt ${retryCount}/${maxRetries})`, 'system');
+        reconnectTimeout = setTimeout(() => connectToPin(pin), 3000);
+      } else {
+        append('❌ Max reconnection attempts reached.', 'system');
       }
     });
+
     ws.addEventListener('error', (err) => {
       console.error('WebSocket error:', err);
-      append('WebSocket error', 'system');
+      append('❌ WebSocket error — check console.', 'system');
     });
   }
 
+  // --- Button Events ---
   joinBtn.addEventListener('click', () => {
     const pin = pinInput.value.trim();
     if (!pin) {
-      append('Enter a PIN to join', 'system');
+      append('Enter a PIN to join a room.', 'system');
       return;
     }
+    append(`Joining room ${pin}...`, 'system');
     connectToPin(pin);
   });
 
   createBtn.addEventListener('click', () => {
     const pin = Math.floor(1000 + Math.random() * 9000).toString();
     pinInput.value = pin;
-    append(`Created room ${pin}`, 'system');
+    append(`🆕 Created room ${pin}`, 'system');
     connectToPin(pin);
   });
 
   sendBtn.addEventListener('click', () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      append('Not connected to a room', 'system');
+      append('Not connected to any room.', 'system');
       return;
     }
     const user = usernameInput.value.trim() || 'anon';
