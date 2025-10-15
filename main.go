@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -12,47 +13,66 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// --- Tunables (aligned with Gorilla best practices) ---
 const (
 	writeWait      = 10 * time.Second
 	pongWait       = 60 * time.Second
 	pingPeriod     = 54 * time.Second // < pongWait
-	maxMessageSize = 1024 * 8         // Allow some buffer for JSON
+	maxMessageSize = 1024 * 8
 )
 
-// --- WebSocket upgrader ---
+// Check if the request Origin matches the request Host (same-site), or local dev.
+func allowOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Same-origin navigations or tools (e.g., curl)
+		return true
+	}
+
+	// Parse Origin
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	originHost := u.Host // includes host:port if present
+	reqHost := r.Host    // includes host:port
+
+	// Allow local dev
+	if strings.Contains(originHost, "localhost") || strings.Contains(originHost, "127.0.0.1") {
+		return true
+	}
+
+	// Allow same-site (exact host:port match)
+	if strings.EqualFold(originHost, reqHost) {
+		return true
+	}
+
+	// Optional: allow specific production domain family
+	// e.g., allow any subdomain of onrender.com if you need:
+	// if strings.HasSuffix(originHost, ".onrender.com") || originHost == "onrender.com" {
+	//     return true
+	// }
+
+	return false
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:    1024,
 	WriteBufferSize:   1024,
 	EnableCompression: true,
 	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		log.Printf("Incoming WebSocket from Origin: %s", origin)
-
-		if origin == "" {
-			// Same-origin or tools; allow
-			return true
-		}
-		// Local dev
-		if strings.Contains(origin, "localhost") || strings.Contains(origin, "127.0.0.1") {
-			return true
-		}
-		// Render deployment — allow either http or https schemes
-		if strings.Contains(origin, "gochat-tz6u.onrender.com") {
-			return true
-		}
-		return false
+		ok := allowOrigin(r)
+		log.Printf("Incoming WebSocket from Origin=%q Host=%q -> allow=%v", r.Header.Get("Origin"), r.Host, ok)
+		return ok
 	},
 }
 
-// --- Client ---
 type Client struct {
 	conn *websocket.Conn
 	send chan []byte
 	hub  *Hub
 }
 
-// --- Hub (chat room for each PIN) ---
 type Hub struct {
 	clients    map[*Client]bool
 	broadcast  chan []byte
@@ -78,14 +98,13 @@ func (h *Hub) run(ctx context.Context) {
 			return
 		case client := <-h.register:
 			h.clients[client] = true
-			// Optional: system join message
 			client.send <- []byte(`{"type":"system","msg":"👋 Welcome to room ` + h.pin + `"}`)
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
 				if len(h.clients) == 0 {
-					return // clean up empty hubs
+					return
 				}
 			}
 		case message := <-h.broadcast:
@@ -101,7 +120,6 @@ func (h *Hub) run(ctx context.Context) {
 	}
 }
 
-// --- Hub Manager ---
 type HubManager struct {
 	hubs map[string]*Hub
 	mu   sync.Mutex
@@ -129,11 +147,9 @@ func (m *HubManager) getHub(pin string) *Hub {
 			cancel()
 		}(pin, hub)
 	}
-
 	return hub
 }
 
-// --- WebSocket handler ---
 func serveWs(manager *HubManager, w http.ResponseWriter, r *http.Request) {
 	pin := r.URL.Query().Get("pin")
 	if pin == "" {
@@ -160,7 +176,7 @@ func serveWs(manager *HubManager, w http.ResponseWriter, r *http.Request) {
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
@@ -179,15 +195,12 @@ func (c *Client) readPump() {
 			break
 		}
 
-		// Handle client heartbeat (JSON ping)
 		trim := strings.TrimSpace(string(message))
 		if strings.Contains(trim, `"type":"ping"`) {
-			// Echo a pong so the client can ignore heartbeats in the UI
-			c.send <- []byte(`{"type":"pong","ts":` + time.Now().Format(`"2006-01-02T15:04:05Z07:00"`) + `}`)
+			c.send <- []byte(`{"type":"pong","ts":"` + time.Now().UTC().Format(time.RFC3339) + `"}`)
 			continue
 		}
 
-		// Broadcast all other messages
 		c.hub.broadcast <- message
 	}
 }
@@ -196,7 +209,7 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	for {
@@ -204,7 +217,6 @@ func (c *Client) writePump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// Hub closed channel: tell client
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -219,7 +231,6 @@ func (c *Client) writePump() {
 			_ = w.Close()
 
 		case <-ticker.C:
-			// Server heartbeat (control frame)
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
@@ -228,7 +239,6 @@ func (c *Client) writePump() {
 	}
 }
 
-// --- Main function ---
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -239,20 +249,16 @@ func main() {
 	manager := newHubManager()
 	mux := http.NewServeMux()
 
-	// Serve static assets
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
-	// Root serves chat.html
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./static/chat.html")
 	})
 
-	// WebSocket endpoint
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(manager, w, r)
 	})
 
-	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))

@@ -52,16 +52,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Prefer building URL from current origin to avoid cross-origin surprises
   function getWsUrl(pin) {
-    const isLocal = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
-    const scheme = isLocal ? 'ws' : 'wss';
-    const host = window.location.host || 'gochat-tz6u.onrender.com';
-    // If you serve frontend from the same host, use relative path — fewer origin issues:
-    // return `${scheme}://${host}/ws?pin=${encodeURIComponent(pin)}`;
-    // Or hardcode Render host if needed:
-    return isLocal
-      ? `ws://localhost:8080/ws?pin=${encodeURIComponent(pin)}`
-      : `wss://gochat-tz6u.onrender.com/ws?pin=${encodeURIComponent(pin)}`;
-  }
+  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const host = window.location.host; // e.g. yourapp.onrender.com
+  return `${scheme}://${host}/ws?pin=${encodeURIComponent(pin)}`;
+}
 
   function clearTimers() {
     if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
