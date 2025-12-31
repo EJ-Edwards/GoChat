@@ -12,26 +12,55 @@
 
 <body>
   <div id="chatbox-container">
-    <h1 id="title2">Go Chat Room</h1>
+    <h1 id="title2">💬 Go Chat Room</h1>
     <div id="all-messages">
     </div>
 
     <div id="typing-container">
       <form>
         <div class="input-container">
-          <label>Username:</label>
-          <input type="text" id="username" />
+          <label for="username">Username:</label>
+          <input type="text" id="username" placeholder="Your name..." />
         </div>
         <div class="input-container">
-          <label>Message:</label>
-          <input type="text" id="message" />
+          <label for="message">Message:</label>
+          <input type="text" id="message" placeholder="Type your message..." />
         </div>
       </form>
       <button id="send-btn">Send</button>
-      
-      <div id="typing-indicator" style="display: none;">User is typing...</div>
     </div>
+    
+    <div id="typing-indicator" style="display: none; padding: 8px; color: var(--text-secondary); font-style: italic; font-size: 0.9em;">✍️ Someone is typing...</div>
   </div>
+
+  <style>
+    body > h1:first-of-type {
+      display: none;
+    }
+    
+    body > h2 {
+      display: none;
+    }
+    
+    /* Remove padding-top from chatbox container */
+    #chatbox-container {
+      padding-top: 24px !important;
+    }
+    
+    /* Add spacing between title and PIN controls */
+    #title2 {
+      margin-bottom: 28px !important;
+    }
+    
+    #pin-controls {
+      margin-top: 12px !important;
+      margin-bottom: 16px !important;
+    }
+    
+    #all-messages {
+      margin-top: 0;
+    }
+  </style>
 </body>
 
 </html>

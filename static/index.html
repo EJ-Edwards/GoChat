@@ -12,16 +12,16 @@
 </head>
 
 <body>
-  <h1>Welcome to Go Chat</h1>
-  <h2>Your one-stop solution for chatting with friends!</h2>
+  <h1>✨ Welcome to Go Chat</h1>
+  <h2>Connect instantly with friends and chat in real-time!</h2>
   
   <div id="login-container">
     <form id="login-form">
-      <label for="login-username">Username</label>
-      <input id="login-username" type="text" required />
+      <label for="login-username">Enter Your Username</label>
+      <input id="login-username" type="text" placeholder="Choose a unique username..." required maxlength="20" />
 
       <div style="margin-top:12px">
-        <button id="go-chat" type="submit" aria-label="Go to Chat">Go to Chat</button>
+        <button id="go-chat" type="submit" aria-label="Go to Chat">Start Chatting</button>
       </div>
     </form>
 
@@ -38,7 +38,7 @@
             username: username
           });
 
-          window.location.href = `chat.html?${queryParams.toString()}`;
+          window.location.href = `rules.html?${queryParams.toString()}`;
         });
       });
     </script>

@@ -12,17 +12,75 @@
 </head>
 
 <body>
-  <div id="rules">
-    <h1 id="title">Rules for Go Chat</h1>
-    <ul>
-      <li>Be respectful to all users.</li>
-      <li>No spamming or flooding the chat.</li>
-      <li>Keep conversations appropriate for all ages.</li>
-      <li>If you see something, say something - report any bad behavior.</li>
+  <div id="rules" style="background: linear-gradient(135deg, rgba(6, 95, 70, 0.9) 0%, rgba(6, 78, 59, 0.9) 100%); backdrop-filter: blur(20px); padding: 40px; border-radius: 16px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4); max-width: 600px; margin: 20px; border: 1px solid rgba(16, 185, 129, 0.3);">
+    <h1 id="rules-title" style="margin-top: 0; margin-bottom: 30px; position: static; width: auto; background: none; box-shadow: none; border: none; padding: 0; text-align: center; font-size: 2em; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; background: linear-gradient(135deg, #10b981, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">📜 Rules for Go Chat</h1>
+    <ul style="text-align: left; line-height: 2; font-size: 1.1em; color: var(--text-secondary); list-style-position: inside;">
+      <li>✅ Be respectful to all users.</li>
+      <li>🚫 No spamming or flooding the chat.</li>
+      <li>👨‍👩‍👧‍👦 Keep conversations appropriate for all ages.</li>
+      <li>🛡️ If you see something, say something - report any bad behavior.</li>
+      <li>💬 Have fun and enjoy chatting!</li>
     </ul>
-    <button id="accept-rules">Accept</button>
-    <button id="decline-rules">Decline</button>
+    <div style="display: flex; gap: 16px; margin-top: 30px;">
+      <button id="accept-rules" style="flex: 1; padding: 14px 28px; background: linear-gradient(135deg, #10b981, #059669); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; transition: all 0.3s ease; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">Accept ✓</button>
+      <button id="decline-rules" style="flex: 1; padding: 14px 28px; background: linear-gradient(135deg, #ef4444, #dc2626); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; transition: all 0.3s ease; font-size: 1em; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);">Decline ✗</button>
+    </div>
   </div>
+  
+  <style>
+    /* Hide the fixed header on rules page */
+    body > h1:first-of-type {
+      display: none;
+    }
+    
+    body > h2 {
+      display: none;
+    }
+    
+    #accept-rules:hover {
+      background: linear-gradient(135deg, #059669, #047857);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+    
+    #decline-rules:hover {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+    }
+    
+    #accept-rules:active, #decline-rules:active {
+      transform: translateY(0) scale(0.98);
+    }
+  </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // Get username from URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const username = urlParams.get('username');
+
+      // If no username, redirect back to index
+      if (!username) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      // Handle Accept button
+      document.getElementById('accept-rules').addEventListener('click', () => {
+        const queryParams = new URLSearchParams({
+          username: username
+        });
+        window.location.href = `chat.html?${queryParams.toString()}`;
+      });
+
+      // Handle Decline button
+      document.getElementById('decline-rules').addEventListener('click', () => {
+        alert('Goodbye! 👋 Come back when you\'re ready to follow the rules.');
+        window.location.href = 'index.html';
+      });
+    });
+  </script>
 </body>
 
 </html>

@@ -50,12 +50,19 @@ document.addEventListener('DOMContentLoaded', () => {
     messages.scrollTop = messages.scrollHeight;
   }
 
-  // Prefer building URL from current origin to avoid cross-origin surprises
+  // Prefer building URL from current origin to avoid cross-origin surprises.
+  // Fallback to localhost when running from file:// or custom overrides.
   function getWsUrl(pin) {
-  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const host = window.location.host; // e.g. yourapp.onrender.com
-  return `${scheme}://${host}/ws?pin=${encodeURIComponent(pin)}`;
-}
+    const loc = window.location;
+    const scheme = loc.protocol === 'https:' ? 'wss' : 'ws';
+
+    let host = loc.host;
+    if (!host || host === ':') {
+      host = window.__GOCHAT_WS_HOST__ || 'localhost:8080';
+    }
+
+    return `${scheme}://${host}/ws?pin=${encodeURIComponent(pin)}`;
+  }
 
   function clearTimers() {
     if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
