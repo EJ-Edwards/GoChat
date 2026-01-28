@@ -1,5 +1,9 @@
 // File: static/connect.js
 document.addEventListener('DOMContentLoaded', () => {
+  // --- Autofill username from URL if present ---
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlUsername = urlParams.get('username');
+
   const usernameInput = document.getElementById('username');
   const messageInput = document.getElementById('message');
   const sendBtn = document.getElementById('send-btn');
@@ -9,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!usernameInput || !messageInput || !sendBtn || !messages) {
     console.error("❌ Chat elements missing — check your HTML IDs!");
     return;
+  }
+
+  // Autofill username if present in URL
+  if (urlUsername && usernameInput) {
+    usernameInput.value = urlUsername;
   }
 
   // Prevent form submit reloads
