@@ -1,65 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="style.css"/>
+  <title>GoChat</title>
+  <link rel="stylesheet" href="style.css" />
   <script defer src="script.js"></script>
   <script defer src="connect.js"></script>
 </head>
-
 <body>
-  <div id="chatbox-container">
-    <div id="all-messages">
-    </div>
-
-    <div id="typing-container">
-      <form>
-        <div class="input-container">
-          <label for="username">Username:</label>
-          <input type="text" id="username" placeholder="Your name..." />
-        </div>
-        <div class="input-container">
-          <label for="message">Message:</label>
-          <input type="text" id="message" placeholder="Type your message..." />
-        </div>
-      </form>
-      <button id="send-btn">Send</button>
-    </div>
-    
-    <div id="typing-indicator" style="display: none; padding: 8px; color: var(--text-secondary); font-style: italic; font-size: 0.9em;">✍️ Someone is typing...</div>
-  </div>
-
-  <style>
-    body > h1:first-of-type {
-      display: none;
-    }
-    
-    body > h2 {
-      display: none;
-    }
-    
-    /* Remove padding-top from chatbox container */
-    #chatbox-container {
-      padding-top: 24px !important;
-    }
-    
-    /* Add spacing between title and PIN controls */
-    #title1 {
-      margin-bottom: 12px !important;
-    }
-    
-    #pin-controls {
-      margin-top: 12px !important;
-      margin-bottom: 16px !important;
-    }
-    
-    #all-messages {
-      margin-top: 0;
-    }
-  </style>
+  <main>
+    <section id="chatbox-container">
+      <div id="all-messages" aria-live="polite" aria-label="Chat messages"></div>
+      <div id="typing-indicator" style="display:none;" aria-live="polite"></div>
+      <div id="typing-container">
+        <form autocomplete="off">
+          <div class="input-container">
+            <label for="username">Username</label>
+            <input type="text" id="username" placeholder="Your name..." maxlength="20" required />
+          </div>
+          <div class="input-container">
+            <label for="message">Message</label>
+            <input type="text" id="message" placeholder="Type your message..." maxlength="200" required />
+          </div>
+          <button id="send-btn" type="submit">Send</button>
+        </form>
+      </div>
+      <div class="export-feature">
+        <button id="export-btn" title="Export chat as JSON">Export Chat (JSON)</button>
+      </div>
+    </section>
+    <footer>
+      <p>Made with <span style="color:#10b981;">&#10084;</span> by <strong>EJ</strong> &middot; <a href="https://github.com/ej-edwards/GoChat" target="_blank">GitHub</a></p>
+    </footer>
+  </main>
 </body>
-
 </html>

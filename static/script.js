@@ -1,4 +1,3 @@
-const database = firebase.database().ref()
 const messagesDiv = document.getElementById("all-messages");
 const username = document.getElementById("username");
 const message = document.getElementById("message");

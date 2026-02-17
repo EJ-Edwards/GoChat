@@ -1,48 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoChat &bull; Modern Realtime Chat</title>
   <link rel="stylesheet" href="style.css" />
   <script defer src="script.js"></script>
   <script defer src="connect.js"></script>
-  <title>Go Chat</title>
 </head>
-
 <body>
-  <h1>✨ Welcome to Go Chat</h1>
-  <h2>Connect instantly with friends and chat in real-time!</h2>
-  
-  <div id="login-container">
-    <form id="login-form">
-      <label for="login-username">Enter Your Username</label>
-      <input id="login-username" type="text" placeholder="Choose a unique username..." required maxlength="20" autocomplete="off" />
-
-      <div style="margin-top:12px">
+  <header>
+    <h1 id="title">GoChat
+  </header>
+  <main>
+    <section id="login-container">
+      <form id="login-form" autocomplete="off">
+        <label for="login-username">Enter Your Username</label>
+        <input id="login-username" type="text" placeholder="Choose a unique username..." required maxlength="20" />
         <button id="go-chat" type="submit" aria-label="Go to Chat">Start Chatting</button>
-      </div>
-    </form>
-
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        const loginForm = document.getElementById("login-form");
-
-        loginForm.addEventListener("submit", (event) => {
-          event.preventDefault();
-
-          const username = document.getElementById("login-username").value.trim();
-
-          const queryParams = new URLSearchParams({
-            username: username
-          });
-
-          window.location.href = `rules.html?${queryParams.toString()}`;
-        });
+      </form>
+    </section>
+    <footer>
+      <p>Made with <span style="color:#3e6ff4;">&#10084;</span> by <strong>EJ</strong> &middot; <a href="https://github.com/ej-edwards/GoChat" target="_blank">GitHub</a></p>
+    </footer>
+  </main>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const loginForm = document.getElementById("login-form");
+      loginForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const username = document.getElementById("login-username").value.trim();
+        if (!username) {
+          alert("Please enter a username.");
+          return;
+        }
+        const queryParams = new URLSearchParams({ username });
+        window.location.href = `rules.html?${queryParams.toString()}`;
       });
-    </script>
-  </div>
+    });
+  </script>
 </body>
-
 </html>
